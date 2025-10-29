@@ -1,7 +1,6 @@
 import streamlit as st
 import re
 from langchain_community.chat_models import ChatOllama
-from langchain.schema import HumanMessage, AIMessage
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
