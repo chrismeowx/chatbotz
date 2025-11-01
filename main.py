@@ -5,6 +5,9 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 
+def clear_memory():
+    st.session_state.memory = ConversationBufferMemory(return_messages=True)
+
 st.set_page_config(layout="wide")
 st.title("Local Chatbot")
 
@@ -13,9 +16,6 @@ with st.sidebar.expander("Model Options"):
     model_choose = st.selectbox("Choose one of the model" ,model_options, index=0)
 
 
-def clear_memory():
-    st.session_state.memory = ConversationBufferMemory(return_messages=True)
-    
 with st.sidebar.expander("Advanced Settings"):
     max_history = st.number_input("Max History", min_value=1, max_value=10, value=2, step=1)
     context_size = st.number_input("Max Token", min_value=1024, max_value=2048, value=1024, step=1024)
@@ -49,9 +49,8 @@ with st.sidebar.expander("Examples"):
     label_example = "Give example of how do you want your answer will be:"
     example = st.text_area(label_example, placeholder="Markdown adalah sebuah format penulisan teks yang digunakan untuk mempermudah pembuatan tampilan teks yang terstruktur, seperti membuat judul, teks tebal, miring, daftar, atau bahkan menampilkan kode. Bahasa ini sering digunakan di berbagai platform seperti GitHub, Notion, Discord, Reddit. Dengan Markdown, kamu bisa membuat teks terlihat rapi tanpa perlu menulis kode HTML yang panjang.")
 
-submit = st.sidebar.button(label="Customize Chatbot", help="Customize all the available choices before you click the submit button.", on_click=True, type="secondary")
 
-if submit:
+def submitz():
     st.session_state["chatbot_customization"] = {
         "model" : model_choose, 
         "max_history": max_history,
@@ -66,6 +65,7 @@ if submit:
         "examples" : example
     }
 
+submit = st.sidebar.button(label="Customize Chatbot", help="Customize all the available choices before you click the submit button.", on_click=submitz, type="secondary")
 
 def customization(key, default):
     return st.session_state.get(key, default)
@@ -80,90 +80,27 @@ persona = customization("persona", "Super Smart")
 tone = customization("tone", "Professional")
 formats = customization("format", "Bullet Points")
 context = customization("context", "Very Smart")
+examples = customization("examples", "JAWAB LIKE THIS")
 
-history = []
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "memory" not in st.session_state:
     st.session_state.memory = ConversationBufferMemory(return_message=True)
-    history = st.session_state.memory
-
-llm = ChatOllama(model=model, streaming=True, temperature=temperature, top_p=top_p, top_k=top_k)
-
-
-
-if "prev_model" not in st.session_state:
-    st.session_state.prev_model = model
-
-if st.session_state.prev_model != model:
-    st.session_state.chat_history = []
-    st.session_state.memory = ConversationBufferMemory(return_messages=True)
-    st.session_state.prev_model = model
-
-for msg in st.session_state.chat_history:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-def trim_memory():
-    while len(st.session_state.chat_history) > max_history * 2:
-        st.session_state.chat_history.pop(0)
-        if st.session_state.chat_history:
-            st.session_state.chat_history.pop(0)
 
 def clean(text):
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
-prompt = ""
-if prompt := st.chat_input("Say something"):
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    st.session_state.chat_history.append({"role": "user", "content": prompt})
-    trim_memory()
-    with st.chat_message("assistant"):
-        response_container = st.empty()
-        full_response = ""
-        for chunk in chain.stream({"human_input": prompt}):
-            if isinstance(chunk, dict) and "text" in chunk:
-                text_chunk = clean(chunk["text"])
-                full_response += text_chunk
-                response_container.markdown(full_response)
-    st.session_state.chat_history.append({"role": "assistant", "content": full_response})
-    trim_memory()
+def trim_memory():
+   entries = st.session_state.chat_history
+   max_entries = max_history * 2
+   while len(entries) > max_entries:
+        entries.pop(0)
 
-if st.sidebar.button("Summarize Conversation"):
-    if st.session_state.chat_history:
-        history_text = "\n".join(
-            [f"{msg['role'].capitalize()}: {msg['content']}" for msg in st.session_state.chat_history]
-        )
+llm = ChatOllama(model=model, streaming=True, temperature=temperature, top_p=top_p, top_k=top_k)
 
-        summarize_prompt = PromptTemplate(
-            input_variables=["history"],
-            template="Summarize the following conversation briefly:\n\n{history}\n\nSummary:"
-        )
+prompt_text = '''
 
-        summarize_chain = LLMChain(llm=llm, prompt=summarize_prompt)
-
-        with st.spinner("Summarizing..."):
-            summary = summarize_chain.run({"history": history_text})
-
-        st.subheader("Summary")
-        st.write(clean(summary))
-    else:
-        st.sidebar.warning("No conversation history to summarize.")
-
-
-prompt_template = PromptTemplate(
-    input_variables=[
-        "persona",
-        "context",
-        "tone",
-        "formats",
-        "examples",
-        "history",
-        "human_input"
-    ],
-    template="""
-    ======================
+======================
     Chatbot Instructions
     ======================
 
@@ -200,16 +137,87 @@ prompt_template = PromptTemplate(
 
     Assistant:
     """
-)
+'''
 
-final_prompt = prompt_template.format(
-    persona=persona,
-    context=context,
-    tone=tone,
-    formats=formats,
-    examples=example,
-    history=history,
-    human_input=prompt
+if "prev_model" not in st.session_state:
+    st.session_state.prev_model = model
+
+if st.session_state.prev_model != model:
+    st.session_state.chat_history = []
+    st.session_state.memory = ConversationBufferMemory(return_messages=True)
+    st.session_state.prev_model = model
+
+for msg in st.session_state.chat_history:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+prompt_template = PromptTemplate(
+    input_variables=[
+        "history",
+        "human_input"
+    ],
+    template=prompt_text
+    
 )
 
 chain = LLMChain(llm=llm, prompt=prompt_template, memory=st.session_state.memory)
+
+for msg in st.session_state.chat_history:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+
+if prompt := st.chat_input("Say something"):
+    st.session_state.chat_history.append({"role": "user", "content": prompt})
+    trim_memory()
+
+    history_text = "\n".join(
+        [f"{m['role'].capitalize()}: {m['content']}" for m in st.session_state.chat_history]
+    )
+
+    with st.chat_message("assistant"):
+        response_container = st.empty()
+        full_response = ""
+        try:
+            for chunk in chain.stream({
+                "persona": persona,
+                "context": context,
+                "tone": tone,
+                "formats": formats,
+                "examples": examples,
+                "history": history_text,
+                "human_input": prompt
+            }):
+                if isinstance(chunk, dict) and "text" in chunk:
+                    text_chunk = clean(chunk["text"])
+                else:
+                    text_chunk = clean(str(chunk))
+                full_response += text_chunk
+                response_container.markdown(full_response)
+        except ValueError as e:
+            st.error(f"Input validation error: {e}")
+            full_response = f"(Error: {e})"
+
+    st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+    trim_history()
+
+if st.sidebar.button("Summarize Conversation"):
+    if st.session_state.chat_history:
+        history_text = "\n".join(
+            [f"{msg['role'].capitalize()}: {msg['content']}" for msg in st.session_state.chat_history]
+        )
+
+        summarize_prompt = PromptTemplate(
+            input_variables=["history"],
+            template="Summarize the following conversation briefly:\n\n{history}\n\nSummary:"
+        )
+
+        summarize_chain = LLMChain(llm=llm, prompt=summarize_prompt)
+
+        with st.spinner("Summarizing..."):
+            summary = summarize_chain.run({"history": history_text})
+
+        st.subheader("Summary")
+        st.write(clean(summary))
+    else:
+        st.sidebar.warning("No conversation history to summarize.")
